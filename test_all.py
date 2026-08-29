@@ -70,7 +70,7 @@ def run_full_suite():
     print(f"-> Generated Human Payment Link: {human_link_id} (Source: {l2.json()['source']})")
     
     # Simulate captured webhooks
-    w1 = client.post("/webhooks/razorpay", json={
+    w1 = client.post("/payments/webhooks/razorpay", json={
         "event": "payment.captured",
         "payload": {
             "payment": {
@@ -86,7 +86,7 @@ def run_full_suite():
     })
     assert w1.json()["source"] == "agent"
     
-    w2 = client.post("/webhooks/razorpay", json={
+    w2 = client.post("/payments/webhooks/razorpay", json={
         "event": "payment.captured",
         "payload": {
             "payment": {

@@ -51,7 +51,7 @@ def main():
                     "source": "agent"
                 })
             elif cmd == "webhook-capture":
-                res = client.post("/webhooks/razorpay", json={
+                res = client.post("/payments/webhooks/razorpay", json={
                     "event": "payment.captured",
                     "payload": {
                         "payment": {

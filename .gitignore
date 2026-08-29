@@ -28,13 +28,16 @@ ENV/
 env.bak/
 venv.bak/
 
-# Environment Variables & Secrets
+# Environment Variables & Secrets (never commit real keys)
 .env
 
-# SQLite Database
+# SQLite Database (auto-generated, seeded via seed.py)
 *.db
 *.sqlite
 *.sqlite3
+
+# Planning / Internal Artifacts
+implementation_plan.md
 
 # IDE / Editor Settings
 .vscode/

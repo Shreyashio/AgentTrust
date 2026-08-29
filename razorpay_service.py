@@ -119,14 +119,21 @@ def create_payment_link(
         }
 
 def verify_webhook_signature(body_bytes: bytes, signature: Optional[str]) -> bool:
-    """Verifies Razorpay HMAC webhook signature if webhook secret is configured."""
+    """
+    Verifies Razorpay HMAC-SHA256 webhook signature.
+    Returns True when no secret is set (allows open testing).
+    Returns False when a secret is configured but the signature is missing or mismatched.
+    """
     if not config.RAZORPAY_WEBHOOK_SECRET:
-        return True  # If no secret configured, allow test processing
+        # No secret configured — allow all webhook traffic (test/dev mode)
+        return True
     if not signature:
+        # Secret is configured but no signature header provided
         return False
-    expected_sig = hmac.new(
+    # Python 3 correct usage: hmac.new(key, msg, digestmod)
+    mac = hmac.new(
         config.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
         body_bytes,
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected_sig, signature)
+        digestmod=hashlib.sha256
+    )
+    return hmac.compare_digest(mac.hexdigest(), signature)

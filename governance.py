@@ -43,19 +43,21 @@ def check_policy(action: str, details: dict) -> dict:
                 "reason": "Current budget is 0 or negative; manual baseline approval required."
             }
         
-        # Calculate percentage increase
+        # Calculate signed percentage change (positive = increase, negative = decrease)
         percent_change = ((new_budget - current_budget) / current_budget) * 100.0
         max_allowed_percent = float(policies.get("max_budget_adjustment_percent", 10.0))
+        abs_change = abs(percent_change)
+        direction = "increase" if percent_change >= 0 else "decrease"
         
-        if percent_change <= max_allowed_percent:
+        if abs_change <= max_allowed_percent:
             return {
                 "status": "approved",
-                "reason": f"Budget increase of {percent_change:.1f}% is within the allowed limit ({max_allowed_percent}%)."
+                "reason": f"Budget {direction} of {abs_change:.1f}% is within the allowed limit ({max_allowed_percent}%)."
             }
         else:
             return {
                 "status": "needs_approval",
-                "reason": f"Budget increase of {percent_change:.1f}% exceeds autonomous limit of {max_allowed_percent}%. Human approval required."
+                "reason": f"Budget {direction} of {abs_change:.1f}% exceeds autonomous limit of {max_allowed_percent}%. Human approval required."
             }
 
     # 2. Action: launch_campaign

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 import config
-from models import Product, Campaign, ActionLog
+from models import Product, Campaign
 from governance import check_policy, log_action_attempt
 from routers.products import calculate_staleness
 

@@ -34,14 +34,8 @@ app.include_router(payments.router)
 app.include_router(analytics.router)
 app.include_router(audit.router)
 
-# Direct aliases for convenience
-@app.get("/roas")
-def direct_roas(db=analytics.Depends(analytics.get_db)):
-    return analytics.get_roas_report(db=db)
-
-@app.post("/webhooks/razorpay")
-async def razorpay_direct_webhook(request: payments.Request, db=payments.Depends(payments.get_db)):
-    return await payments.razorpay_webhook(request=request, x_razorpay_signature=None, db=db)
+# Note: Webhook lives at POST /payments/webhooks/razorpay (via payments router)
+# Note: ROAS report lives at GET /analytics/roas (via analytics router)
 
 @app.get("/")
 def root():

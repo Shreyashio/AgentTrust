@@ -44,7 +44,19 @@ class ActionLogResponse(BaseModel):
 
 # --- Agent Schemas ---
 class AgentActRequest(BaseModel):
-    instruction: str
+    instruction: str = ...  # type: ignore
+    # Max 2000 chars to prevent token abuse
+    model_config = ConfigDict(from_attributes=True)
+
+    from pydantic import field_validator
+    @field_validator("instruction")
+    @classmethod
+    def validate_instruction_length(cls, v: str) -> str:
+        if len(v.strip()) == 0:
+            raise ValueError("Instruction cannot be empty.")
+        if len(v) > 2000:
+            raise ValueError("Instruction must be 2000 characters or fewer.")
+        return v
 
 class ToolExecutionStep(BaseModel):
     tool: str

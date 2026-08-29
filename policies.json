@@ -1,0 +1,15 @@
+{
+  "max_budget_adjustment_percent": 10.0,
+  "max_campaign_launch_budget_inr": 1000.0,
+  "rules": {
+    "adjust_ad_budget": {
+      "max_autonomous_percent": 10.0,
+      "description": "Agent can adjust ad budget autonomously up to 10%"
+    },
+    "launch_campaign": {
+      "max_autonomous_budget": 1000.0,
+      "currency": "INR",
+      "description": "Agent can launch a campaign only if budget is under INR 1000"
+    }
+  }
+}

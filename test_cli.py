@@ -10,7 +10,7 @@ BASE_URL = "http://127.0.0.1:8000"
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python test_cli.py [products|gov-check|agent-fresh|agent-high|agent-stale|pay-human|pay-agent|webhook-capture|orders|roas|audit]")
+        print("Usage: python test_cli.py [products|gov-check|agent-fresh|agent-high|agent-stale|pay-human|pay-agent|webhook-capture|orders|compare|roas|audit]")
         return
 
     cmd = sys.argv[1].lower()
@@ -71,6 +71,8 @@ def main():
                 })
             elif cmd == "orders":
                 res = client.get("/payments/orders")
+            elif cmd in ("compare", "compare-orders"):
+                res = client.get("/analytics/compare-orders")
             elif cmd == "roas":
                 res = client.get("/analytics/roas")
             elif cmd in ("audit", "audit-log"):

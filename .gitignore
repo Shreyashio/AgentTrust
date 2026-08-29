@@ -36,8 +36,9 @@ venv.bak/
 *.sqlite
 *.sqlite3
 
-# Planning / Internal Artifacts
+# Planning / Executables / Internal Artifacts
 implementation_plan.md
+ngrok.exe
 
 # IDE / Editor Settings
 .vscode/

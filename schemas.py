@@ -3,7 +3,7 @@ Pydantic schemas for request validation and response serialization.
 """
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 # --- Product Schemas ---
 class ProductBase(BaseModel):
@@ -45,10 +45,8 @@ class ActionLogResponse(BaseModel):
 # --- Agent Schemas ---
 class AgentActRequest(BaseModel):
     instruction: str = ...  # type: ignore
-    # Max 2000 chars to prevent token abuse
     model_config = ConfigDict(from_attributes=True)
 
-    from pydantic import field_validator
     @field_validator("instruction")
     @classmethod
     def validate_instruction_length(cls, v: str) -> str:
@@ -78,6 +76,7 @@ class CreatePaymentLinkRequest(BaseModel):
     product_id: Optional[int] = None
     campaign_id: Optional[int] = None
     source: Optional[str] = "human"  # "human" or "agent"
+    click_delay_seconds: Optional[float] = None
     customer_email: Optional[str] = "buyer@example.com"
     customer_contact: Optional[str] = "+919876543210"
 
@@ -101,6 +100,10 @@ class OrderResponse(BaseModel):
     currency: str
     status: str
     source: str
+    user_agent: Optional[str] = None
+    referer: Optional[str] = None
+    click_delay_seconds: Optional[float] = None
+    classification_method: str = "manual_tag_fallback"
     created_at: datetime
     updated_at: datetime
 
@@ -141,6 +144,25 @@ class CampaignROASBreakdown(BaseModel):
 class ROASReportResponse(BaseModel):
     summary: ROASSummary
     campaigns: List[CampaignROASBreakdown]
+
+# --- Order Comparison Schemas ---
+class OrderSignalComparisonItem(BaseModel):
+    id: int
+    product_name: str
+    source: str
+    status: str
+    user_agent: Optional[str] = None
+    referer: Optional[str] = None
+    click_delay_seconds: Optional[float] = None
+    classification_method: str = "manual_tag_fallback"
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class CompareOrdersResponse(BaseModel):
+    total_orders_compared: int
+    recent_orders: List[OrderSignalComparisonItem]
+    signal_differences: Dict[str, Any]
 
 # --- Audit Log Timeline Schemas ---
 class TimelineEvent(BaseModel):

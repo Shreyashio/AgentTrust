@@ -48,7 +48,7 @@ class Campaign(Base):
 class Order(Base):
     """
     Order table for transactions processed via Razorpay.
-    Classifies purchases as 'human' or 'agent' and links to Campaign and Product.
+    Classifies purchases as 'human' or 'agent' and records technical fingerprint signals.
     """
     __tablename__ = "orders"
 
@@ -62,6 +62,14 @@ class Order(Base):
     currency = Column(String, default="INR", nullable=False)
     status = Column(String, default="created", nullable=False)  # 'created', 'captured', 'failed'
     source = Column(String, default="human", nullable=False)  # 'human' or 'agent'
+    
+    # Technical Fingerprint Signals (Captured for Human vs Robot classification)
+    user_agent = Column(Text, nullable=True)
+    referer = Column(Text, nullable=True)
+    click_delay_seconds = Column(Float, nullable=True)  # Time gap between page load and purchase click
+    ip_address = Column(String, nullable=True)
+    classification_method = Column(String, default="manual_tag_fallback", nullable=False)  # 'real_signal_based' or 'manual_tag_fallback'
+
     notes = Column(Text, nullable=True)  # JSON string of metadata/notes
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

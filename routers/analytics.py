@@ -1,13 +1,16 @@
 """
-API endpoints for ROAS (Return On Ad Spend) Ledger and Attribution Analytics.
-Splits revenue and ROAS metrics by Human-tagged orders vs Agent-tagged orders.
+API endpoints for ROAS (Return On Ad Spend) Ledger and Order Technical Signal Comparison.
+Splits revenue by Human vs Agent orders and provides side-by-side signal analytics.
 """
-from typing import List, Dict
+from typing import List, Dict, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Campaign, Product, Order
-from schemas import ROASReportResponse, ROASSummary, CampaignROASBreakdown
+from schemas import (
+    ROASReportResponse, ROASSummary, CampaignROASBreakdown,
+    CompareOrdersResponse, OrderSignalComparisonItem
+)
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & ROAS"])
 
@@ -97,4 +100,63 @@ def get_roas_report(db: Session = Depends(get_db)):
     return ROASReportResponse(
         summary=summary,
         campaigns=campaign_breakdowns
+    )
+
+@router.get("/compare-orders", response_model=CompareOrdersResponse)
+def compare_recent_orders(db: Session = Depends(get_db)):
+    """
+    Compares captured technical fingerprint signals (User-Agent, Referer, Click Delay)
+    side-by-side for the two most recent orders to visually contrast Human vs Robot behavior.
+    """
+    recent_orders = db.query(Order).order_by(Order.id.desc()).limit(2).all()
+    
+    mapped_items = [OrderSignalComparisonItem.model_validate(o) for o in recent_orders]
+    
+    if len(recent_orders) < 2:
+        return CompareOrdersResponse(
+            total_orders_compared=len(recent_orders),
+            recent_orders=mapped_items,
+            signal_differences={
+                "message": "At least 2 orders are required for side-by-side technical comparison. Perform 1 Human purchase and 1 Robot purchase first."
+            }
+        )
+        
+    o1, o2 = recent_orders[0], recent_orders[1]
+    
+    ua1, ua2 = (o1.user_agent or "").lower(), (o2.user_agent or "").lower()
+    bot_keywords = ["headless", "playwright", "puppeteer", "selenium", "bot", "python-urllib", "httpx"]
+    
+    is_o1_bot_ua = any(kw in ua1 for kw in bot_keywords)
+    is_o2_bot_ua = any(kw in ua2 for kw in bot_keywords)
+    
+    delay1 = o1.click_delay_seconds or 0.0
+    delay2 = o2.click_delay_seconds or 0.0
+    
+    diff_summary = {
+      "user_agent_signals": {
+          f"order_id_{o1.id}": {
+              "user_agent": o1.user_agent,
+              "has_bot_signature": is_o1_bot_ua
+          },
+          f"order_id_{o2.id}": {
+              "user_agent": o2.user_agent,
+              "has_bot_signature": is_o2_bot_ua
+          }
+      },
+      "click_timing_signals": {
+          f"order_id_{o1.id}_delay": f"{delay1:.2f} seconds",
+          f"order_id_{o2.id}_delay": f"{delay2:.2f} seconds",
+          "timing_difference_seconds": round(abs(delay1 - delay2), 2),
+          "faster_order_id": o1.id if delay1 < delay2 else o2.id
+      },
+      "verdict": (
+          f"Order #{o1.id} ({o1.source}) vs Order #{o2.id} ({o2.source}). "
+          f"User-Agents and click timing clearly distinguish automated robot scripts from human browser interaction."
+      )
+    }
+    
+    return CompareOrdersResponse(
+        total_orders_compared=len(recent_orders),
+        recent_orders=mapped_items,
+        signal_differences=diff_summary
     )

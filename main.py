@@ -2,7 +2,10 @@
 AgentTrust - Main FastAPI Application
 Entry point for the governance and execution backend.
 """
+import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import config
 from database import engine, Base, SessionLocal
 from models import Product, ActionLog, Campaign, Order, WebhookLog
@@ -26,6 +29,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Enable CORS for local storefront testing
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Include routers
 app.include_router(products.router)
 app.include_router(governance.router)
@@ -34,12 +46,25 @@ app.include_router(payments.router)
 app.include_router(analytics.router)
 app.include_router(audit.router)
 
-# Note: Webhook lives at POST /payments/webhooks/razorpay (via payments router)
-# Note: ROAS report lives at GET /analytics/roas (via analytics router)
+# Storefront direct route
+STOREFRONT_PATH = os.path.join(os.path.dirname(__file__), "storefront", "index.html")
+
+@app.get("/store")
+@app.get("/storefront")
+def serve_storefront():
+    """Serves the test storefront directly from FastAPI."""
+    if os.path.exists(STOREFRONT_PATH):
+        return FileResponse(STOREFRONT_PATH)
+    return {"error": "Storefront index.html not found"}
+
+@app.get("/compare-orders")
+def compare_orders_alias(db=analytics.Depends(analytics.get_db)):
+    """Direct alias for GET /analytics/compare-orders."""
+    return analytics.compare_recent_orders(db=db)
 
 @app.get("/")
 def root():
-    return {"message": "hello", "service": "AgentTrust"}
+    return {"message": "hello", "service": "AgentTrust", "storefront_url": "/store"}
 
 @app.get("/health")
 def health_check():

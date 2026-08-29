@@ -1,5 +1,6 @@
 """
 API endpoints for Razorpay Test Payments, Webhooks, and Human vs Agent Order Classification.
+Captures HTTP headers (User-Agent, Referer), timing signals, and IP addresses.
 """
 import json
 from typing import List, Optional
@@ -14,15 +15,39 @@ from razorpay_service import create_payment_link, verify_webhook_signature, clas
 router = APIRouter(prefix="/payments", tags=["Payments & Orders"])
 
 @router.post("/create-link", response_model=PaymentLinkResponse)
-def create_test_payment_link(payload: CreatePaymentLinkRequest, db: Session = Depends(get_db)):
+def create_test_payment_link(
+    payload: CreatePaymentLinkRequest,
+    request: Request,
+    x_click_delay: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
     """
     Generates a Razorpay Test Mode Payment Link for a product/amount.
-    Tags the purchase source ('human' or 'agent') and links to campaign/product.
+    Captures request technical signals (User-Agent, Referer, Click Delay, IP) and classifies purchase.
     """
     prod_name = payload.product_name
     prod_id = payload.product_id
     camp_id = payload.campaign_id
     
+    # 1. Extract technical fingerprint signals from request
+    user_agent = request.headers.get("user-agent", "Unknown")
+    referer = request.headers.get("referer") or request.headers.get("referrer", "")
+    ip_address = request.client.host if request.client else None
+    
+    click_delay = payload.click_delay_seconds
+    if click_delay is None and x_click_delay:
+        try:
+            click_delay = float(x_click_delay)
+        except (ValueError, TypeError):
+            click_delay = None
+
+    # 2. Evaluate signals via updated Classifier Engine
+    classified_source, classification_method, reason = classify_purchase_source(
+        custom_source=payload.source,
+        user_agent=user_agent,
+        click_delay_seconds=click_delay
+    )
+
     # If product_id is provided, fetch product details
     if prod_id:
         prod = db.query(Product).filter(Product.id == prod_id).first()
@@ -42,15 +67,21 @@ def create_test_payment_link(payload: CreatePaymentLinkRequest, db: Session = De
         amount=payload.amount,
         product_name=prod_name,
         product_id=prod_id,
-        source=payload.source,
+        source=classified_source,
         customer_email=payload.customer_email,
         customer_contact=payload.customer_contact
     )
     
+    # Embed signals and classification method in metadata notes
+    link_data["notes"]["user_agent"] = user_agent
+    link_data["notes"]["referer"] = referer
+    link_data["notes"]["classification_method"] = classification_method
+    if click_delay is not None:
+        link_data["notes"]["click_delay_seconds"] = str(click_delay)
     if camp_id:
         link_data["notes"]["campaign_id"] = str(camp_id)
 
-    # Record initial order in SQLite database
+    # Record order with technical fingerprint signals in SQLite database
     order = Order(
         payment_link_id=link_data["id"],
         payment_id=None,
@@ -60,7 +91,12 @@ def create_test_payment_link(payload: CreatePaymentLinkRequest, db: Session = De
         amount=payload.amount,
         currency="INR",
         status="created",
-        source=link_data["source"],
+        source=classified_source,
+        user_agent=user_agent,
+        referer=referer,
+        click_delay_seconds=click_delay,
+        ip_address=ip_address,
+        classification_method=classification_method,
         notes=json.dumps(link_data["notes"]),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
@@ -75,7 +111,7 @@ def create_test_payment_link(payload: CreatePaymentLinkRequest, db: Session = De
         amount=link_data["amount"],
         product_name=prod_name,
         campaign_id=camp_id,
-        source=link_data["source"],
+        source=classified_source,
         status=link_data["status"],
         mode=link_data.get("mode")
     )
@@ -88,7 +124,7 @@ async def razorpay_webhook(
 ):
     """
     Webhook receiver for Razorpay events (payment.captured, payment.failed, payment_link.paid).
-    Validates webhook, extracts metadata, classifies order as 'human' or 'agent', and updates SQLite.
+    Validates webhook, extracts metadata, classifies order, and updates SQLite database.
     """
     body_bytes = await request.body()
     
@@ -125,8 +161,12 @@ async def razorpay_webhook(
     )
     db.add(webhook_log)
     
-    # 2. Classify Purchase Source (Human vs Agent)
-    classified_source = classify_purchase_source(notes=notes)
+    # 2. Classify Purchase Source using real signals + manual fallback
+    classified_source, classification_method, reason = classify_purchase_source(
+        notes=notes,
+        user_agent=notes.get("user_agent"),
+        click_delay_seconds=float(notes.get("click_delay_seconds")) if str(notes.get("click_delay_seconds", "")).replace('.', '', 1).isdigit() else None
+    )
     
     # 3. Locate and update or create Order record in DB
     order = None
@@ -139,6 +179,7 @@ async def razorpay_webhook(
     if order:
         order.payment_id = payment_id or order.payment_id
         order.source = classified_source
+        order.classification_method = classification_method
         order.updated_at = datetime.now(timezone.utc)
         
         if event in ("payment.captured", "payment_link.paid", "order.paid"):
@@ -150,7 +191,6 @@ async def razorpay_webhook(
         db.refresh(order)
         order_id = order.id
     else:
-        # If order was created outside this session, insert it now from webhook data
         amount_paise = payment_entity.get("amount") or payment_link_entity.get("amount") or 0
         amount_val = float(amount_paise) / 100.0 if amount_paise else 0.0
         prod_name = notes.get("product_name", "Webhook Order Item")
@@ -168,6 +208,10 @@ async def razorpay_webhook(
             currency="INR",
             status=status_val,
             source=classified_source,
+            user_agent=notes.get("user_agent"),
+            referer=notes.get("referer"),
+            click_delay_seconds=float(notes.get("click_delay_seconds")) if str(notes.get("click_delay_seconds", "")).replace('.', '', 1).isdigit() else None,
+            classification_method=classification_method,
             notes=json.dumps(notes),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
@@ -180,7 +224,7 @@ async def razorpay_webhook(
     return WebhookResponse(
         status="success",
         event=event,
-        message=f"Event '{event}' processed. Order #{order_id} tagged as '{classified_source}'.",
+        message=f"Event '{event}' processed. Order #{order_id} tagged as '{classified_source}' ({classification_method}).",
         order_id=order_id,
         source=classified_source
     )

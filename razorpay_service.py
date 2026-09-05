@@ -153,6 +153,21 @@ def create_payment_link(
             "mode": "simulated_test"
         }
 
+def fetch_payment_link_status(link_id: str) -> Optional[str]:
+    """
+    Queries the Razorpay API for a payment link's live status
+    ("created", "paid", "cancelled"). Returns None if the link is unknown
+    or the API is unreachable (e.g. mock/fallback links).
+    """
+    client = get_razorpay_client()
+    if not client:
+        return None
+    try:
+        res = client.payment_link.fetch(link_id)
+        return res.get("status")
+    except Exception:
+        return None
+
 def verify_webhook_signature(body_bytes: bytes, signature: Optional[str]) -> bool:
     """
     Verifies Razorpay HMAC-SHA256 webhook signature.

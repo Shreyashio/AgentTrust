@@ -12,8 +12,11 @@ Usage:
 """
 import sys
 from datetime import datetime, timedelta, timezone
+from sqlalchemy.exc import IntegrityError
 from database import SessionLocal
-from models import Product, Campaign
+from models import Product, Campaign, Order
+
+DEMO_MERCHANT_ID = "demo"
 
 SAMPLE_PRODUCTS = [
     {"name": "Wireless Noise-Cancelling Headphones", "stock_count": 45, "price": 2999.00, "margin": 0.35, "age_hours": 2},
@@ -78,6 +81,82 @@ def seed_merchant(merchant_id: str = "demo"):
               f"Total products: {len(product_rows)}.")
     finally:
         db.close()
+
+
+def adopt_demo_orders(merchant_id: str) -> int:
+    """
+    Copies the shared 'demo' storefront's orders into the given merchant's tenant.
+
+    This is how purchases made via the no-login demo storefront (e.g. the
+    robot_purchaser) can be pulled into a merchant's own dashboard. Idempotent:
+    orders whose payment_link_id already exist for this merchant are skipped.
+    """
+    db = SessionLocal()
+    added = 0
+    try:
+        demo_orders = db.query(Order).filter(Order.merchant_id == DEMO_MERCHANT_ID).all()
+        if not demo_orders:
+            return added
+
+        merchant_products = {p.name: p for p in db.query(Product).filter(Product.merchant_id == merchant_id).all()}
+        existing_links = {o.payment_link_id for o in db.query(Order).filter(Order.merchant_id == merchant_id).all()}
+
+        for o in demo_orders:
+            adopted_link = f"{o.payment_link_id}_adopted"
+
+            # Idempotent re-run: skip if we already own the raw link or a copy.
+            if o.payment_link_id in existing_links:
+                continue
+            if adopted_link in existing_links:
+                copy = db.query(Order).filter(Order.payment_link_id == adopted_link).first()
+                if copy:
+                    # Never downgrade a copy that already advanced (captured/failed).
+                    if copy.status == "created" and o.status not in ("created", None):
+                        copy.status = o.status
+                    copy.payment_id = o.payment_id or copy.payment_id
+                    copy.source = o.source or copy.source
+                    copy.classification_method = o.classification_method or copy.classification_method
+                    copy.updated_at = o.updated_at or copy.updated_at
+                    db.commit()
+                continue
+
+            prod = merchant_products.get(o.product_name) if o.product_name else None
+            camp = None
+            if o.campaign_id and prod:
+                camp = db.query(Campaign).filter(
+                    Campaign.product_id == prod.id,
+                    Campaign.merchant_id == merchant_id
+                ).first()
+
+            try:
+                db.add(Order(
+                    payment_link_id=adopted_link,
+                    payment_id=o.payment_id,
+                    campaign_id=camp.id if camp else None,
+                    product_id=prod.id if prod else None,
+                    product_name=o.product_name,
+                    amount=o.amount,
+                    currency=o.currency,
+                    status=o.status,
+                    source=o.source,
+                    user_agent=o.user_agent,
+                    referer=o.referer,
+                    click_delay_seconds=o.click_delay_seconds,
+                    ip_address=o.ip_address,
+                    classification_method=o.classification_method,
+                    notes=o.notes or "",
+                    created_at=o.created_at,
+                    updated_at=o.updated_at,
+                    merchant_id=merchant_id,
+                ))
+                db.commit()
+                existing_links.add(adopted_link)
+                added += 1
+            except IntegrityError:
+                db.rollback()
+    finally:
+        db.close()
+    return added
 
 
 if __name__ == "__main__":

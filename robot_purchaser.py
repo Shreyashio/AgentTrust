@@ -2,14 +2,27 @@
 Playwright Automated Robot Purchase Script for AgentTrust.
 Simulates an automated AI purchasing bot completing a purchase on the storefront.
 Captured signals (Headless/Automated User-Agent, fast click timing) will be evaluated by the classifier.
+
+Usage:
+    python robot_purchaser.py                    # buys on the shared 'demo' storefront
+    python robot_purchaser.py <clerk_token>      # buys on YOUR storefront (orders appear in YOUR dashboard)
+    AGENTTRUST_TOKEN=<token> python robot_purchaser.py
 """
+import os
+import sys
 import time
 import random
 from playwright.sync_api import sync_playwright
 
-STOREFRONT_URL = "http://127.0.0.1:8000/store"
+BASE_URL = "http://127.0.0.1:8000"
+
+def build_storefront_url() -> str:
+    token = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("AGENTTRUST_TOKEN", "")
+    suffix = f"?token={token}" if token else ""
+    return f"{BASE_URL}/store{suffix}"
 
 def run_robot_purchase():
+    STOREFRONT_URL = build_storefront_url()
     print("=========================================================")
     print("        PLAYWRIGHT ROBOT AUTOMATED PURCHASER             ")
     print("=========================================================")

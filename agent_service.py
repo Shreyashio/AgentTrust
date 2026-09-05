@@ -92,23 +92,29 @@ CLAUDE_TOOLS = [
     }
 ]
 
-def find_product(db: Session, identifier: str) -> Product:
-    """Helper to locate a product by exact/partial name or integer ID."""
+def find_product(db: Session, identifier: str, merchant_id: str = "demo") -> Product:
+    """Helper to locate a product by exact/partial name or integer ID, scoped to one merchant."""
     identifier_str = str(identifier).strip()
     
     # Try ID lookup
     if identifier_str.isdigit():
-        prod = db.query(Product).filter(Product.id == int(identifier_str)).first()
+        prod = db.query(Product).filter(
+            Product.id == int(identifier_str),
+            Product.merchant_id == merchant_id
+        ).first()
         if prod:
             return prod
             
     # Try exact/partial name lookup
-    prod = db.query(Product).filter(Product.name.ilike(f"%{identifier_str}%")).first()
+    prod = db.query(Product).filter(
+        Product.name.ilike(f"%{identifier_str}%"),
+        Product.merchant_id == merchant_id
+    ).first()
     return prod
 
-def tool_check_inventory(db: Session, product_identifier: str) -> Dict[str, Any]:
+def tool_check_inventory(db: Session, product_identifier: str, merchant_id: str = "demo") -> Dict[str, Any]:
     """Tool: check_inventory implementation."""
-    prod = find_product(db, product_identifier)
+    prod = find_product(db, product_identifier, merchant_id)
     if not prod:
         return {
             "found": False,
@@ -128,9 +134,9 @@ def tool_check_inventory(db: Session, product_identifier: str) -> Dict[str, Any]
         "is_stale": status == "stale"
     }
 
-def tool_generate_ad(db: Session, product_name: str, target_benefit: str = "") -> Dict[str, Any]:
+def tool_generate_ad(db: Session, product_name: str, target_benefit: str = "", merchant_id: str = "demo") -> Dict[str, Any]:
     """Tool: generate_ad implementation."""
-    prod = find_product(db, product_name)
+    prod = find_product(db, product_name, merchant_id)
     name = prod.name if prod else product_name
     price_info = f"Special offer at INR {prod.price:.2f}!" if prod else "Best price guaranteed!"
     benefit_info = f" - {target_benefit}" if target_benefit else ""
@@ -146,13 +152,14 @@ def tool_launch_campaign(
     product_identifier: str,
     campaign_name: str,
     budget: float,
-    ad_copy: str
+    ad_copy: str,
+    merchant_id: str = "demo"
 ) -> Tuple[Dict[str, Any], str, str]:
     """
     Tool: launch_campaign implementation.
     Passes through inventory staleness check and governance policy engine.
     """
-    prod = find_product(db, product_identifier)
+    prod = find_product(db, product_identifier, merchant_id)
     
     # Check 1: Block if product data is stale
     if prod:
@@ -164,7 +171,8 @@ def tool_launch_campaign(
                 action="launch_campaign",
                 details={"product": prod.name, "budget": budget, "campaign_name": campaign_name},
                 result="blocked",
-                reason=reason
+                reason=reason,
+                merchant_id=merchant_id
             )
             return (
                 {"status": "blocked", "reason": reason, "campaign_id": None},
@@ -185,7 +193,8 @@ def tool_launch_campaign(
         action="launch_campaign",
         details={"product_id": prod.id if prod else None, "budget": budget, "campaign_name": campaign_name},
         result=gov_status,
-        reason=gov_reason
+        reason=gov_reason,
+        merchant_id=merchant_id
     )
     
     # Execute according to governance result
@@ -199,7 +208,8 @@ def tool_launch_campaign(
         ad_copy=ad_copy,
         status=campaign_status,
         created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc)
+        updated_at=datetime.now(timezone.utc),
+        merchant_id=merchant_id
     )
     db.add(new_campaign)
     db.commit()
@@ -219,12 +229,15 @@ def tool_launch_campaign(
         gov_reason
     )
 
-def tool_adjust_budget(db: Session, campaign_id: int, new_budget: float) -> Tuple[Dict[str, Any], str, str]:
+def tool_adjust_budget(db: Session, campaign_id: int, new_budget: float, merchant_id: str = "demo") -> Tuple[Dict[str, Any], str, str]:
     """
     Tool: adjust_budget implementation.
     Passes through governance policy engine.
     """
-    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    campaign = db.query(Campaign).filter(
+        Campaign.id == campaign_id,
+        Campaign.merchant_id == merchant_id
+    ).first()
     if not campaign:
         reason = f"Campaign with ID {campaign_id} not found."
         return ({"error": reason}, "blocked", reason)
@@ -241,7 +254,8 @@ def tool_adjust_budget(db: Session, campaign_id: int, new_budget: float) -> Tupl
         action="adjust_ad_budget",
         details={"campaign_id": campaign_id, "current_budget": campaign.budget, "new_budget": new_budget},
         result=gov_status,
-        reason=gov_reason
+        reason=gov_reason,
+        merchant_id=merchant_id
     )
     
     if gov_status == "approved":
@@ -270,16 +284,16 @@ def tool_adjust_budget(db: Session, campaign_id: int, new_budget: float) -> Tupl
         gov_reason
     )
 
-def execute_tool(tool_name: str, tool_input: dict, db: Session) -> Tuple[Dict[str, Any], str, str]:
+def execute_tool(tool_name: str, tool_input: dict, db: Session, merchant_id: str = "demo") -> Tuple[Dict[str, Any], str, str]:
     """Routes tool execution and collects governance results."""
     if tool_name == "check_inventory":
-        output = tool_check_inventory(db, tool_input.get("product_identifier", ""))
+        output = tool_check_inventory(db, tool_input.get("product_identifier", ""), merchant_id)
         gov_status = "blocked" if output.get("is_stale") else "approved"
         gov_reason = "Product data is stale (>24h)" if output.get("is_stale") else "Inventory data is fresh"
         return output, gov_status, gov_reason
         
     elif tool_name == "generate_ad":
-        output = tool_generate_ad(db, tool_input.get("product_name", ""), tool_input.get("target_benefit", ""))
+        output = tool_generate_ad(db, tool_input.get("product_name", ""), tool_input.get("target_benefit", ""), merchant_id)
         return output, "approved", "Ad generation does not require governance check"
         
     elif tool_name == "launch_campaign":
@@ -288,19 +302,21 @@ def execute_tool(tool_name: str, tool_input: dict, db: Session) -> Tuple[Dict[st
             tool_input.get("product_identifier", ""),
             tool_input.get("campaign_name", "Automated Campaign"),
             float(tool_input.get("budget", 0)),
-            tool_input.get("ad_copy", "")
+            tool_input.get("ad_copy", ""),
+            merchant_id
         )
         
     elif tool_name == "adjust_budget":
         return tool_adjust_budget(
             db,
             int(tool_input.get("campaign_id", 0)),
-            float(tool_input.get("new_budget", 0))
+            float(tool_input.get("new_budget", 0)),
+            merchant_id
         )
         
     return {"error": f"Unknown tool '{tool_name}'"}, "blocked", "Unknown tool"
 
-def fallback_heuristic_agent(instruction: str, db: Session) -> Dict[str, Any]:
+def fallback_heuristic_agent(instruction: str, db: Session, merchant_id: str = "demo") -> Dict[str, Any]:
     """
     Intelligent autonomous agent fallback used when no external Anthropic API key is supplied.
     Parses natural language instructions to call the exact same tool chain and governance checks.
@@ -318,7 +334,7 @@ def fallback_heuristic_agent(instruction: str, db: Session) -> Dict[str, Any]:
         new_budget = float(budget_match.group(1)) if budget_match else 1050.0
         
         input_data = {"campaign_id": camp_id, "new_budget": new_budget}
-        output, gov_res, gov_reason = execute_tool("adjust_budget", input_data, db)
+        output, gov_res, gov_reason = execute_tool("adjust_budget", input_data, db, merchant_id)
         steps.append({
             "tool": "adjust_budget",
             "input": input_data,
@@ -332,8 +348,8 @@ def fallback_heuristic_agent(instruction: str, db: Session) -> Dict[str, Any]:
         return {"instruction": instruction, "status": final_status, "steps": steps, "final_summary": summary}
         
     # 2. Ad creation / Campaign launch intent
-    # Find matching product in DB
-    all_products = db.query(Product).all()
+    # Find matching product in DB (only this merchant's products)
+    all_products = db.query(Product).filter(Product.merchant_id == merchant_id).all()
     target_product = None
     for p in all_products:
         if p.name.lower() in text or str(p.id) in text:
@@ -366,7 +382,7 @@ def fallback_heuristic_agent(instruction: str, db: Session) -> Dict[str, Any]:
     
     # Step 1: check_inventory
     inv_input = {"product_identifier": target_product.name}
-    inv_output, inv_gov_res, inv_gov_reason = execute_tool("check_inventory", inv_input, db)
+    inv_output, inv_gov_res, inv_gov_reason = execute_tool("check_inventory", inv_input, db, merchant_id)
     steps.append({
         "tool": "check_inventory",
         "input": inv_input,
@@ -386,7 +402,7 @@ def fallback_heuristic_agent(instruction: str, db: Session) -> Dict[str, Any]:
         
     # Step 2: generate_ad
     ad_input = {"product_name": target_product.name, "target_benefit": "Premium quality & best pricing"}
-    ad_output, ad_gov_res, ad_gov_reason = execute_tool("generate_ad", ad_input, db)
+    ad_output, ad_gov_res, ad_gov_reason = execute_tool("generate_ad", ad_input, db, merchant_id)
     steps.append({
         "tool": "generate_ad",
         "input": ad_input,
@@ -402,7 +418,7 @@ def fallback_heuristic_agent(instruction: str, db: Session) -> Dict[str, Any]:
         "budget": budget,
         "ad_copy": ad_output.get("ad_copy", "")
     }
-    launch_output, launch_gov_res, launch_gov_reason = execute_tool("launch_campaign", launch_input, db)
+    launch_output, launch_gov_res, launch_gov_reason = execute_tool("launch_campaign", launch_input, db, merchant_id)
     steps.append({
         "tool": "launch_campaign",
         "input": launch_input,
@@ -421,7 +437,7 @@ def fallback_heuristic_agent(instruction: str, db: Session) -> Dict[str, Any]:
         "final_summary": summary
     }
 
-def run_agent_act(instruction: str, db: Session) -> Dict[str, Any]:
+def run_agent_act(instruction: str, db: Session, merchant_id: str = "demo") -> Dict[str, Any]:
     """
     Main entry point for AI Agent execution.
     Uses Anthropic Claude API if configured; otherwise uses intelligent deterministic tool executor.
@@ -463,7 +479,7 @@ def run_agent_act(instruction: str, db: Session) -> Dict[str, Any]:
                         t_input = content_block.input
                         t_id = content_block.id
                         
-                        out, g_res, g_reason = execute_tool(t_name, t_input, db)
+                        out, g_res, g_reason = execute_tool(t_name, t_input, db, merchant_id)
                         steps.append({
                             "tool": t_name,
                             "input": t_input,
@@ -516,9 +532,9 @@ def run_agent_act(instruction: str, db: Session) -> Dict[str, Any]:
             }
         except Exception as e:
             # Fallback to local heuristic agent on API error
-            fallback_result = fallback_heuristic_agent(instruction, db)
+            fallback_result = fallback_heuristic_agent(instruction, db, merchant_id)
             fallback_result["final_summary"] += f" (Note: Claude API fallback used: {str(e)})"
             return fallback_result
     else:
         # Anthropic key not supplied -> use intelligent local agent
-        return fallback_heuristic_agent(instruction, db)
+        return fallback_heuristic_agent(instruction, db, merchant_id)

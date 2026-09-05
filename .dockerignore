@@ -1,0 +1,16 @@
+# Keep the Docker build fast and secret-free: never copy these into the image.
+.env
+**/.env
+*.db
+*.sqlite
+*.sqlite3
+backend/node_modules
+frontend/node_modules
+frontend/dist
+__pycache__
+*.pyc
+.git
+.venv
+venv
+implementation_plan.md
+ngrok.exe

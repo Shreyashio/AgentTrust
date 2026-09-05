@@ -64,6 +64,9 @@
       color: #60a5fa;
       margin: 0.5rem 0;
     }
+    .price:before {
+      content: "₹";
+    }
     .badge {
       display: inline-block;
       padding: 0.25rem 0.5rem;
@@ -129,33 +132,48 @@
 
   <script>
     const pageLoadTime = Date.now();
+    const DEMO_MERCHANT_ID = "demo";
+    const params = new URLSearchParams(window.location.search);
+    const TOKEN = params.get("token");
+
+    async function apiFetch(path, options = {}) {
+      const headers = new Headers(options.headers || {});
+      if (options.body) headers.set("Content-Type", "application/json");
+      if (TOKEN) headers.set("Authorization", "Bearer " + TOKEN);
+      const res = await fetch(path, { ...options, headers });
+      if (res.status === 401) {
+        throw new Error("Session expired or invalid. Open this storefront from your dashboard.");
+      }
+      return res;
+    }
 
     async function loadProducts() {
       try {
-        const res = await fetch("/products");
+        // With a token, the storefront shows the logged-in merchant's own catalog;
+        // without one, it shows the shared "demo" catalog.
+        const res = await apiFetch(TOKEN ? "/products" : "/products/demo");
         if (!res.ok) throw new Error("HTTP error " + res.status);
-        
         const products = await res.json();
         document.getElementById("loading").style.display = "none";
-        
+
         const grid = document.getElementById("product-grid");
         grid.innerHTML = "";
 
         products.slice(0, 3).forEach(prod => {
           const card = document.createElement("div");
           card.className = "card";
-          
+
           const isFresh = prod.staleness_status === "fresh";
           const badgeClass = isFresh ? "badge-fresh" : "badge-stale";
-          
+
           card.innerHTML = `
             <div>
               <span class="badge ${badgeClass}">${prod.staleness_status}</span>
               <h3>${prod.name}</h3>
               <p style="color: var(--muted); margin: 0.25rem 0;">Stock: ${prod.stock_count} units</p>
-              <div class="price">₹${prod.price.toLocaleString('en-IN')}</div>
+              <div class="price">${Number(prod.price).toLocaleString('en-IN')}</div>
             </div>
-            <button class="buy-btn" id="btn-buy-${prod.id}" onclick="buyProduct(${prod.id}, '${prod.name.replace(/'/g, "\\'")}', ${prod.price})" ${prod.stock_count <= 0 ? 'disabled' : ''}>
+            <button class="buy-btn" id="btn-buy-${prod.id}" onclick="buyProduct(${prod.id}, '${String(prod.name).replace(/'/g, "\\'")}', ${prod.price})" ${prod.stock_count <= 0 ? 'disabled' : ''}>
               ${prod.stock_count > 0 ? 'Buy Now' : 'Out of Stock'}
             </button>
           `;
@@ -179,18 +197,19 @@
       statusEl.innerText = "Generating test payment link...";
 
       try {
-        const res = await fetch("/payments/create-link", {
+        const body = {
+          product_id: productId,
+          product_name: productName,
+          amount: amount,
+          source: "human"
+        };
+        if (!TOKEN) body.merchant_id = DEMO_MERCHANT_ID;
+
+        const res = await apiFetch("/payments/create-link", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            product_id: productId,
-            product_name: productName,
-            amount: amount,
-            source: "human"
-          })
+          body: JSON.stringify(body)
         });
+        if (!res.ok) throw new Error("HTTP error " + res.status);
 
         const data = await res.json();
         if (data.short_url) {

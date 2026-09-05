@@ -23,3 +23,6 @@ RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
 # Anthropic Claude API Key & Optional Workspace ID
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_WORKSPACE_ID = os.getenv("ANTHROPIC_WORKSPACE_ID", "").strip()
+
+# Clerk Authentication (used to verify merchant session tokens on every API call)
+CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "").strip()

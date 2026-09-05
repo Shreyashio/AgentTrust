@@ -76,6 +76,7 @@ class CreatePaymentLinkRequest(BaseModel):
     product_id: Optional[int] = None
     campaign_id: Optional[int] = None
     source: Optional[str] = "human"  # "human" or "agent"
+    merchant_id: Optional[str] = None  # Optional explicit tenant for no-login / demo storefront testing
     click_delay_seconds: Optional[float] = None
     customer_email: Optional[str] = "buyer@example.com"
     customer_contact: Optional[str] = "+919876543210"
@@ -115,6 +116,10 @@ class WebhookResponse(BaseModel):
     message: str
     order_id: Optional[int] = None
     source: Optional[str] = None
+
+class SimulatePaymentRequest(BaseModel):
+    order_id: Optional[int] = None
+    payment_link_id: Optional[str] = None
 
 # --- ROAS Analytics Schemas ---
 class ROASSummary(BaseModel):

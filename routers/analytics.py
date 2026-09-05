@@ -11,18 +11,29 @@ from schemas import (
     ROASReportResponse, ROASSummary, CampaignROASBreakdown,
     CompareOrdersResponse, OrderSignalComparisonItem
 )
+from auth import get_current_merchant_id
+from seed_merchant import adopt_demo_orders
+from routers.payments import reconcile_pending_payments
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & ROAS"])
 
 @router.get("/roas", response_model=ROASReportResponse)
-def get_roas_report(db: Session = Depends(get_db)):
+def get_roas_report(
+    db: Session = Depends(get_db),
+    merchant_id: str = Depends(get_current_merchant_id)
+):
     """
-    Computes overall ROAS and per-campaign ROAS breakdown split into:
+    Computes overall ROAS and per-campaign ROAS breakdown for the logged-in merchant, split into:
     1. ROAS from Human-tagged purchases
     2. ROAS from Agent-tagged purchases
     """
-    campaigns = db.query(Campaign).all()
-    captured_orders = db.query(Order).filter(Order.status == "captured").all()
+    adopt_demo_orders(merchant_id)
+    reconcile_pending_payments(db)
+    campaigns = db.query(Campaign).filter(Campaign.merchant_id == merchant_id).all()
+    captured_orders = db.query(Order).filter(
+        Order.merchant_id == merchant_id,
+        Order.status == "captured"
+    ).all()
 
     # Calculate Global Totals
     total_cost = sum(c.ad_spend if c.ad_spend > 0 else c.budget for c in campaigns)
@@ -56,7 +67,10 @@ def get_roas_report(db: Session = Depends(get_db)):
     # Calculate Per-Campaign Breakdown
     campaign_breakdowns: List[CampaignROASBreakdown] = []
     for c in campaigns:
-        prod = db.query(Product).filter(Product.id == c.product_id).first() if c.product_id else None
+        prod = db.query(Product).filter(
+            Product.id == c.product_id,
+            Product.merchant_id == merchant_id
+        ).first() if c.product_id else None
         
         # Link orders by direct campaign_id or fallback to product_id
         camp_orders = [
@@ -103,12 +117,18 @@ def get_roas_report(db: Session = Depends(get_db)):
     )
 
 @router.get("/compare-orders", response_model=CompareOrdersResponse)
-def compare_recent_orders(db: Session = Depends(get_db)):
+def compare_recent_orders(
+    db: Session = Depends(get_db),
+    merchant_id: str = Depends(get_current_merchant_id)
+):
     """
     Compares captured technical fingerprint signals (User-Agent, Referer, Click Delay)
     side-by-side for the two most recent orders to visually contrast Human vs Robot behavior.
     """
-    recent_orders = db.query(Order).order_by(Order.id.desc()).limit(2).all()
+    adopt_demo_orders(merchant_id)
+    recent_orders = db.query(Order).filter(
+        Order.merchant_id == merchant_id
+    ).order_by(Order.id.desc()).limit(2).all()
     
     mapped_items = [OrderSignalComparisonItem.model_validate(o) for o in recent_orders]
     

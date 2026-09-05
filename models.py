@@ -19,6 +19,7 @@ class Product(Base):
     price = Column(Float, nullable=False)
     margin = Column(Float, default=0.0, nullable=False)  # e.g. 0.30 for 30% profit margin
     last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    merchant_id = Column(String, nullable=False, index=True, server_default="demo", default="demo")  # Clerk user ID
 
     # Relationships
     campaigns = relationship("Campaign", back_populates="product")
@@ -40,6 +41,7 @@ class Campaign(Base):
     status = Column(String, default="active", nullable=False)  # 'active', 'pending_approval', 'blocked'
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    merchant_id = Column(String, nullable=False, index=True, server_default="demo", default="demo")  # Clerk user ID
 
     # Relationships
     product = relationship("Product", back_populates="campaigns")
@@ -73,6 +75,7 @@ class Order(Base):
     notes = Column(Text, nullable=True)  # JSON string of metadata/notes
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    merchant_id = Column(String, nullable=False, index=True, server_default="demo", default="demo")  # Clerk user ID
 
     # Relationships
     product = relationship("Product", back_populates="orders")
@@ -90,6 +93,7 @@ class ActionLog(Base):
     result = Column(String, nullable=False)  # 'approved', 'needs_approval', or 'blocked'
     reason = Column(String, nullable=False)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    merchant_id = Column(String, nullable=False, index=True, server_default="demo", default="demo")  # Clerk user ID
 
 class WebhookLog(Base):
     """

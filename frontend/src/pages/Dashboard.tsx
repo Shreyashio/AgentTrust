@@ -1,5 +1,6 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
-import { useClerk, useUser } from '@clerk/clerk-react'
+import { useClerk, useUser, useAuth } from '@clerk/clerk-react'
+import { useEffect, useState } from 'react'
 import { API_BASE_URL } from '../lib/api'
 import OverviewPage from './sections/OverviewPage'
 import InventoryPage from './sections/InventoryPage'
@@ -22,6 +23,16 @@ const navLinks = [
 export default function Dashboard() {
   const { signOut } = useClerk()
   const { user } = useUser()
+  const { getToken } = useAuth()
+  const [storefrontHref, setStorefrontHref] = useState(`${API_BASE_URL}/storefront`)
+
+  useEffect(() => {
+    getToken()
+      .then((token) => {
+        if (token) setStorefrontHref(`${API_BASE_URL}/storefront?token=${encodeURIComponent(token)}`)
+      })
+      .catch(() => {})
+  }, [getToken])
 
   return (
     <div className="dashboard">
@@ -45,7 +56,7 @@ export default function Dashboard() {
         <header className="topbar">
           <span className="user-email">
             {user?.emailAddresses[0]?.emailAddress}{' '}
-            <a href={`${API_BASE_URL}/storefront`} target="_blank" rel="noreferrer" style={{ marginLeft: '1rem' }}>
+            <a href={storefrontHref} target="_blank" rel="noreferrer" style={{ marginLeft: '1rem' }}>
               Demo Storefront
             </a>
           </span>

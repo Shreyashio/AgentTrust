@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import ActionLog, Order, Campaign, WebhookLog
 from schemas import AuditLogResponse, TimelineEvent
+from auth import get_current_merchant_id
 
 router = APIRouter(prefix="", tags=["Audit Trail"])
 
@@ -25,20 +26,21 @@ def safe_parse_json(text: Optional[str]) -> dict:
 @router.get("/audit-log", response_model=AuditLogResponse)
 def get_audit_trail(
     order: str = Query("asc", description="Sort order: 'asc' for chronological narrative, 'desc' for latest first"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    merchant_id: str = Depends(get_current_merchant_id)
 ):
     """
-    Returns a unified chronological audit trail of the entire system:
+    Returns a unified chronological audit trail of the logged-in merchant's system:
     - Every AI Agent action attempt
     - Every Governance policy decision (approved, held for approval, blocked)
     - Every Campaign created or updated
     - Every Order created, classified (human vs agent), and captured/failed
-    - Every Razorpay webhook processed
+    - Every Razorpay webhook processed for this merchant's orders
     """
     events: List[TimelineEvent] = []
 
     # 1. Governance Policy Decisions & Agent Actions
-    action_logs = db.query(ActionLog).all()
+    action_logs = db.query(ActionLog).filter(ActionLog.merchant_id == merchant_id).all()
     for log in action_logs:
         events.append(
             TimelineEvent(
@@ -53,7 +55,7 @@ def get_audit_trail(
         )
 
     # 2. Campaign Lifecycle Events
-    campaigns = db.query(Campaign).all()
+    campaigns = db.query(Campaign).filter(Campaign.merchant_id == merchant_id).all()
     for camp in campaigns:
         events.append(
             TimelineEvent(
@@ -76,7 +78,7 @@ def get_audit_trail(
         )
 
     # 3. Orders Created & Captured
-    orders = db.query(Order).all()
+    orders = db.query(Order).filter(Order.merchant_id == merchant_id).all()
     for o in orders:
         # Order creation event
         events.append(
@@ -120,9 +122,17 @@ def get_audit_trail(
                 )
             )
 
-    # 4. Razorpay Webhooks
+    # 4. Razorpay Webhooks (only those tied to this merchant's orders via payment link / payment id)
+    merchant_link_ids = {o.payment_link_id for o in orders if o.payment_link_id}
+    merchant_payment_ids = {o.payment_id for o in orders if o.payment_id}
     webhook_logs = db.query(WebhookLog).all()
     for w in webhook_logs:
+        belongs_to_merchant = (
+            (w.payment_link_id and w.payment_link_id in merchant_link_ids) or
+            (w.payment_id and w.payment_id in merchant_payment_ids)
+        )
+        if not belongs_to_merchant:
+            continue
         events.append(
             TimelineEvent(
                 timestamp=w.received_at,

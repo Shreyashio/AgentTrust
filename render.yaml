@@ -1,0 +1,59 @@
+# Render Blueprint — AgentTrust single-service Docker deploy
+#
+# How to deploy:
+#   1. Put this repo on GitHub and create a Render account.
+#   2. New -> Blueprint -> connect repo (render.yaml is picked up automatically).
+#   3. Fill in the SECRET env vars in the Render dashboard (marked sync: false).
+# 4. After first deploy, add your production domain to Clerk
+#      (Dashboard -> <instance> -> Domains) and set "(production)" in allowed origins.
+#    Also add a BUILD-TIME env var (Environment tab -> "Build time" checkbox):
+#      VITE_CLERK_PUBLISHABLE_KEY = <your Clerk publishable key>
+#    and redeploy — the dashboard needs it baked in at build. It is public data.
+# 5. Point the Razorpay webhook at https://<your-app>.onrender.com/payments/webhooks/razorpay
+#      and ensure RAZORPAY_WEBHOOK_SECRET matches the Razorpay dashboard secret.
+#
+# The persistent disk (SQLite home) requires a paid (non-free) plan.
+# On the free tier remove the `disk` block — the database re-seeds each deploy.
+services:
+  - type: web
+    name: agenttrust
+    runtime: docker
+    plan: starter # change to `free` if no cost is desired; then remove the `disk` block
+    region: oregon
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    disk:
+      name: agenttrust-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: APP_NAME
+        value: AgentTrust
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8000
+      - key: DEBUG
+        value: "False"
+      # SQLite lives on the persistent disk so redeploys don't wipe your data.
+      - key: DATABASE_URL
+        value: sqlite:////var/data/agenttrust.db
+      # Clerk verify key (server-side JWT verification).
+      - key: CLERK_SECRET_KEY
+        sync: false
+      # Clerk publishable key + backend URL baked into the frontend build.
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_API_URL
+        sync: false
+      # Razorpay test/live credentials.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      # Optional: Claude agent (falls back to deterministic mode without it).
+      - key: ANTHROPIC_API_KEY
+        sync: false

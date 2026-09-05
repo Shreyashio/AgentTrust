@@ -6,15 +6,20 @@ from sqlalchemy.orm import Session
 from database import get_db
 from schemas import AgentActRequest, AgentActResponse
 from agent_service import run_agent_act
+from auth import get_current_merchant_id
 
 router = APIRouter(prefix="/agent", tags=["AI Agent"])
 
 @router.post("/act", response_model=AgentActResponse)
-def agent_act(payload: AgentActRequest, db: Session = Depends(get_db)):
+def agent_act(
+    payload: AgentActRequest,
+    db: Session = Depends(get_db),
+    merchant_id: str = Depends(get_current_merchant_id)
+):
     """
     Accepts a natural language merchant instruction (e.g., 'Create an ad for Product X with a ₹500 budget').
     The agent decides which tools to invoke (check_inventory, generate_ad, launch_campaign, adjust_budget),
     evaluates actions against governance rules, and executes or holds according to policy.
     """
-    result = run_agent_act(instruction=payload.instruction, db=db)
+    result = run_agent_act(instruction=payload.instruction, db=db, merchant_id=merchant_id)
     return AgentActResponse(**result)

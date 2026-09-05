@@ -87,7 +87,8 @@ def log_action_attempt(
     action: str,
     details: dict,
     result: str,
-    reason: str
+    reason: str,
+    merchant_id: str = "demo"
 ) -> ActionLog:
     """
     Logs an action attempt and its governance evaluation result to the database.
@@ -97,7 +98,8 @@ def log_action_attempt(
         details=json.dumps(details),
         result=result,
         reason=reason,
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(timezone.utc),
+        merchant_id=merchant_id
     )
     db.add(log_entry)
     db.commit()

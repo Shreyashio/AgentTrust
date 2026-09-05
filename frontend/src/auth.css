@@ -1,0 +1,35 @@
+/* Styles shared by the Sign In and Sign Up pages. */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.auth-title {
+  margin: 0 0 0.2rem 0;
+  font-size: 1.6rem;
+  color: #ffffff;
+}
+
+.auth-subtitle {
+  color: #94a3b8;
+  margin: 0 0 1.5rem 0;
+}
+
+.auth-switch {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin: 1.2rem 0 0 0;
+}

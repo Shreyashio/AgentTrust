@@ -28,14 +28,14 @@ export default function AuditPage() {
   useEffect(() => {
     let cancelled = false
     apiFetch('/audit-log?order=desc')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((data) => {
+      .then((res: Response) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data: { timeline: TimelineEvent[]; total_events: number }) => {
         if (cancelled) return
         setEvents(Array.isArray(data.timeline) ? data.timeline : [])
         setTotal(typeof data.total_events === 'number' ? data.total_events : 0)
       })
-      .catch((e) => {
-        if (!cancelled) setError((e as Error).message)
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

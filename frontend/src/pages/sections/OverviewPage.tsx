@@ -19,12 +19,12 @@ export default function OverviewPage() {
 
   useEffect(() => {
     apiFetch('/products')
-      .then((res) => {
+      .then((res: Response) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
-      .then((data) => {
-        const list = Array.isArray(data) ? data : []
+      .then((data: unknown) => {
+        const list = Array.isArray(data) ? (data as Product[]) : []
         setProducts(list)
         setMsg(`Backend connected on port 8000 — ${list.length} product(s) returned.`)
       })

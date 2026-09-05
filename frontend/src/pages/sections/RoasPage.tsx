@@ -38,12 +38,12 @@ export default function RoasPage() {
   useEffect(() => {
     let cancelled = false
     apiFetch('/analytics/roas')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((res: Response) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((data: ROASReport) => {
         if (!cancelled) setReport(data)
       })
-      .catch((e) => {
-        if (!cancelled) setError((e as Error).message)
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
